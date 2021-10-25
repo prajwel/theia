@@ -229,7 +229,7 @@
         while got_response == False:
             try:
                 bswt_req.open("POST", 'https://uvit.iiap.res.in/cgi-bin/bswt.pl', False)  
-                blob = Blob.new([json.dumps(bswt_data)], {type : 'application/json'})
+                blob = Blob.new([json.dumps(bswt_data)], {type : 'application/x-www-form-urlencoded'})
                 bswt_req.send(blob)
                 str(bswt_req.response) 
                 got_response = True

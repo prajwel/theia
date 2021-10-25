@@ -1,3 +1,3 @@
-# Theia web application
+# Theia web application (abandoned project)
 
-This web application uses Pyodide to make the client run the relevant Python code on their browser. A bit slow, but really cool that it works. 
+This web application uses Pyodide to make the client run the relevant Python code on their browser. 
