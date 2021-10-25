@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <!-- Required meta tags -->
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <!-- Bootstrap CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet"
+    integrity="sha384-1BmE4kWBq78iYhFldvKuhfTAU6auU8tT94WrHftjDbrCEXSU1oBoqyl2QvZ6jIW3" crossorigin="anonymous">
+
+  <!-- Pyodide -->
+  <script src="https://cdn.jsdelivr.net/pyodide/v0.18.1/full/pyodide.js" crossorigin=""></script>
+
+  <title> UVIT-POC</title>
+</head>
+
+
+<body>
+
+<!-- Navigation -->
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark static-top">
+  <div class="container">
+    <a class="navbar-brand" href="/">Theia</a>
+    <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarResponsive" aria-controls="navbarResponsive" aria-expanded="false" aria-label="Toggle navigation">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+    <div class="collapse navbar-collapse" id="navbarResponsive">
+      <ul class="navbar-nav ml-auto">
+        <li class="nav-item active">
+          <a class="nav-link" href="/">Home
+            <span class="sr-only"></span>
+          </a>
+        </li>
+      </ul>
+    </div>
+  </div>
+</nav>
+
+<div class="container">
+  <div class="accordion" id="TheiaGuide">
+    <div class="accordion-item">
+      <h2 class="accordion-header" id="headingOne">
+        <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#collapseOne" aria-expanded="false" aria-controls="collapseOne">
+          Theia Guide
+        </button>
+      </h2>
+      <div id="collapseOne" class="accordion-collapse collapse show" aria-labelledby="headingOne" data-bs-parent="#accordionExample">
+        <div class="accordion-body">
+          <strong>This tool can be used to find the appropriate filter for use in the UVIT VIS channel.</strong> 
+          Please choose the primary instrument and provide the RA and DEC coordinates of the sources in sexagesimal units.
+          Please configure only one VIS filter for your target. 
+          Safe limit for VIS filter is 4800 counts/second.
+          For good aspect tracking, there should at least be 2 stars within 12' radius of the target with count rates 
+          greater than 30 counts/second (for good S/N) and lesser than 1000 counts/second (to avoid saturation) in the chosen filter.
+        </div>
+      </div>
+    </div>
+  </div>
+  </div>
+
+  <form id="theia" action="/" method="post">
+    <div class="container col-xl-3 my-5">
+      <div class="row">
+        <div class="col">
+          <!-- <h6 class="text-center mb-3">Please provide the coordinates and select the instrument</h6> -->
+          <div>
+            <div class="form-group">
+              <label for="RA">RA J2000</label>
+              <input class="form-control" id="RA" placeholder="For example, 12:12:12 (hms)" type="text"
+                     name="RA">
+            </div>
+            <div class="form-group">
+              <label for="DEC">DEC J2000</label>
+              <input class="form-control" id="DEC" placeholder="For example, -20:10:14 (dms)" type="text"
+                     name="DEC">
+            </div>
+            <div class="col-md-5 form-group">
+              <label for="instrument">Select instrument</label>
+              <select class="form-control" id="instrument" name="instrument" aria-label="Select instrument">
+                <!-- <option selected>Select instrument</option> -->
+                <option value="uvit">UVIT</option>
+                <option value="sxt">SXT</option>
+                <option value="czti">CZTI</option>
+                <option value="laxpc">LAXPC</option>
+              </select>
+            </div>
+            <hr>
+            <div class="form-group">
+            <button type="submit" class="btn btn-primary">Submit</button>
+            </div>
+            <div class="alert alert-info" role="alert">
+            <h6>Please wait after clicking submit. </h6>
+            <h6>The processing takes around 30 seconds.</h6>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </form>
+
+  <script>
+    async function main() {
+      let pyodide = await loadPyodide({ indexURL: "https://cdn.jsdelivr.net/pyodide/v0.18.1/full/" });
+      await pyodide.loadPackage(["pandas", "numpy", "jinja2", "beautifulsoup4", "astropy"]);
+      await pyodide.runPython(`
+        import sys
+        import warnings
+        import numpy as np
+        from io import BytesIO
+
+        from bs4 import BeautifulSoup
+        from astropy import units as u
+        from astropy.coordinates import SkyCoord
+        from jinja2 import Template
+        from pyodide import open_url
+
+        from js import XMLHttpRequest, Blob
+        import json
+
+        # This code is going to throw some warnings.
+        warnings.filterwarnings("ignore")
+
+        # proximity parameter.
+        proximity = 10.
+
+        # To convert B-V to Spectral Type (reference: http://www.stsci.edu/~inr/intrins.html) 
+        def spectype(f):
+            if f>=1.511:
+                return "M4"
+            elif f>=1.486:
+                return  "M3"
+            elif f>=1.421:
+                return  "M1"
+            elif f>=1.351: 
+                return  "M0"
+            elif f>=1.241: 
+                return  "K7"
+            elif f>=1.076: 
+                return  "K5"
+            elif f>=0.976: 
+                return  "K4"
+            elif f>=0.936: 
+                return  "K3"
+            elif f>=0.891: 
+                return  "K2"
+            elif f>=0.836: 
+                return  "K1"
+            elif f>=0.776: 
+                return  "K0"
+            elif f>=0.711: 
+                return  "G8"
+            elif f>=0.666: 
+                return  "G5"
+            elif f>=0.641: 
+                return  "G3"
+            elif f>=0.616: 
+                return  "G2"
+            elif f>=0.566: 
+                return  "G0"
+            elif f>=0.491: 
+                return  "F8"
+            elif f>=0.401: 
+                return  "F5"
+            elif f>=0.346: 
+                return  "F2"
+            elif f>=0.331: 
+                return  "F1"
+            elif f>=0.311: 
+                return  "F0"
+            elif f>=0.286: 
+                return  "A9"
+            elif f>=0.236: 
+                return  "A8"
+            elif f>=0.186: 
+                return  "A7"
+            elif f>=0.161: 
+                return  "A6"
+            elif f>=0.136: 
+                return  "A5"
+            elif f>=0.101: 
+                return  "A4"
+            elif f>=0.066: 
+                return  "A3"
+            elif f>=0.036: 
+                return  "A2"
+            elif f>=0.006: 
+                return  "A1"
+            elif f>=-0.039:
+                return  "A0"
+            elif f>=-0.089:
+                return  "B9"
+            elif f>=-0.119:
+                return  "B8"
+            elif f>=-0.134:
+                return  "B7"
+            elif f>=-0.149:
+                return  "B6"
+            elif f>=-0.169:
+                return  "B5"
+            elif f>=-0.189:
+                return  "B4"
+            elif f>=-0.219:
+                return  "B3"
+            elif f>=-0.249:
+                return  "B2"
+            elif f>=-0.279:
+                return  "B1"
+            elif f<-0.279:
+                return  "B0"
+            else: 
+                print("out of bounds")
+
+        instrument = 'uvit'
+        RA_user = '12:12:12'        
+        DEC_user = '12:12:12'       
+        
+        # To run beloved BSWT.
+        RADEC = RA_user.replace(':', ' ') + ', ' + DEC_user.replace(':', ' ')
+        bswt_data = {'coord_type': 'eq',
+                    'coords': RADEC,
+                    'source': '',
+                    'prinst': instrument}
+
+        bswt_req = XMLHttpRequest.new()            
+        try_value = 0
+        got_response = False
+        while got_response == False:
+            try:
+                bswt_req.open("POST", 'https://uvit.iiap.res.in/cgi-bin/bswt.pl', False)  
+                blob = Blob.new([json.dumps(bswt_data)], {type : 'application/json'})
+                bswt_req.send(blob)
+                str(bswt_req.response) 
+                got_response = True
+            except (exceptions.RequestException, AttributeError):
+                try_value = try_value + 1
+                if try_value == 50:
+                    print('Check your network, Theia tried 50 times without a luck')
+        
+        html_table = str(bswt_req.response)
+
+
+      `);
+      document.getElementById("theia").innerHTML = pyodide.globals.get('html_table');
+    };
+    main();
+
+
+  </script>
+
+
+
+  <footer id="sticky-footer" class="py-4 bg-dark text-white-50">
+    <div class="container text-center">
+      <!--    <p>This archive is created using the public UVIT data available from AstroSat archive. </p>-->
+      <p>For queries or help, please contact stalin@iiap.res.in </p>
+    </div>
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"
+    integrity="sha384-ka7Sk0Gln4gmtz2MlQnikT1wXgYsOg+OMhuP+IlRH9sENBO0LRn5q+8nbTov4+1p"
+    crossorigin="anonymous"></script>
+</body>
+
+</html>
